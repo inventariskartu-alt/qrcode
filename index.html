@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kartu Inventaris Ruangan</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    padding: 20px;
+    background: #f7f7f7;
+  }
+  h1 {
+    text-align: center;
+    color: #333;
+  }
+  .search-box {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+  select, button {
+    padding: 10px 15px;
+    font-size: 16px;
+    border-radius: 5px;
+  }
+  button {
+    background: #28a745;
+    color: white;
+    border: none;
+    cursor: pointer;
+    transition: 0.3s;
+  }
+  button:hover {
+    background: #218838;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: 20px;
+    background: white;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  }
+  th, td {
+    border: 1px solid #ddd;
+    padding: 10px;
+    text-align: left;
+  }
+  th {
+    background: #e9ecef;
+  }
+  .modal {
+    display: none;
+    position: fixed;
+    z-index: 10;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0,0,0,0.5);
+    justify-content: center;
+    align-items: center;
+  }
+  .modal-content {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    max-width: 400px;
+  }
+  canvas {
+    margin: 10px 0;
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/qrious/dist/qrious.min.js"></script>
+</head>
+<body>
+
+<h1 id="judul">Kartu Inventaris Ruangan</h1>
+
+<div class="search-box" id="searchBox">
+  <label for="daftarRuang">Pilih Ruang:</label>
+  <select id="daftarRuang"></select>
+  <button onclick="tampilkanDataDropdown()">Tampilkan</button>
+</div>
+
+<div id="hasil"></div>
+
+<div id="qrModal" class="modal">
+  <div class="modal-content">
+    <h3>QR Code Ruangan</h3>
+    <canvas id="qrCanvas"></canvas><br>
+    <button onclick="cetakQR()">🖨 Cetak QR</button>
+    <button onclick="downloadQR()">⬇️ Download QR</button>
+    <button onclick="tutupModal()">Tutup</button>
+  </div>
+</div>
+
+<script>
+let dataInventaris = [];
+let qr;
+
+// Load data.json
+fetch('data.json')
+  .then(res => res.json())
+  .then(data => {
+    dataInventaris = data;
+
+    // Isi dropdown
+    let ruangUnik = [...new Set(dataInventaris.map(
+      item => item['Nama Ruang_y'] || item['Nama Ruang_x'] || '(Tanpa Nama)'
+    ))];
+
+    let select = document.getElementById('daftarRuang');
+    ruangUnik.forEach(r => {
+      let opt = document.createElement('option');
+      opt.value = r;
+      opt.textContent = r;
+      select.appendChild(opt);
+    });
+
+    qr = new QRious({
+      element: document.getElementById("qrCanvas"),
+      size: 250,
+      value: ""
+    });
+
+    // Auto load ?ruang=
+    const params = new URLSearchParams(window.location.search);
+    const ruangParam = params.get("ruang");
+    if (ruangParam) {
+      document.getElementById('daftarRuang').value = ruangParam;
+      tampilkanDataDropdown();
+
+      // 🔥 hide judul + dropdown
+      document.getElementById("judul").style.display = "none";
+      document.getElementById("searchBox").style.display = "none";
+    }
+  });
+
+function tampilkanDataDropdown() {
+  let ruang = document.getElementById('daftarRuang').value;
+
+  let barang = dataInventaris.filter(
+    item => (item['Nama Ruang_y'] || item['Nama Ruang_x']) === ruang
+  );
+
+  if (barang.length === 0) {
+    document.getElementById('hasil').innerHTML = "<p><strong>Data tidak ditemukan.</strong></p>";
+    return;
+  }
+
+  const baseUrl = window.location.origin + window.location.pathname;
+  const ruangEncoded = encodeURIComponent(ruang);
+  qr.value = `${baseUrl}?ruang=${ruangEncoded}`;
+
+  let html = `<h2>Ruang: ${ruang}</h2>
+              <table>
+              <tr>
+                <th>No</th>
+                <th>Nama Barang</th>
+                <th>Merk</th>
+                <th>Tahun Pembelian</th>
+                <th>Jumlah</th>
+                <th>Kondisi</th>
+              </tr>`;
+  
+  barang.forEach((b, i) => {
+    let kondisi = [];
+    if (b['Keadaan Baik'] && b['Keadaan Baik'] !== '-' && b['Keadaan Baik'] > 0) kondisi.push(`Baik (${b['Keadaan Baik']})`);
+    if (b['Kurang Baik'] && b['Kurang Baik'] !== '-' && b['Kurang Baik'] > 0) kondisi.push(`Kurang Baik (${b['Kurang Baik']})`);
+    if (b['Rusak Berat'] && b['Rusak Berat'] !== '-' && b['Rusak Berat'] > 0) kondisi.push(`Rusak Berat (${b['Rusak Berat']})`);
+    kondisi = kondisi.join(', ') || '-';
+
+    html += `<tr>
+      <td>${i+1}</td>
+      <td>${b['Nama Barang'] || '-'}</td>
+      <td>${b['Merk'] || '-'}</td>
+      <td>${b['Tahun Pembelian'] || '-'}</td>
+      <td>${b['Jumlah'] || '-'}</td>
+      <td>${kondisi}</td>
+    </tr>`;
+  });
+  
+  html += `</table>`;
+
+  // Tampilkan tombol hanya kalau mode normal
+  if (!new URLSearchParams(window.location.search).get("ruang")) {
+    html += `<div style="margin-top:15px;">
+               <button onclick="window.print()">🖨 Cetak Tabel</button>
+               <button onclick="bukaModal()">📱 Lihat QR</button>
+             </div>`;
+  }
+
+  document.getElementById('hasil').innerHTML = html;
+}
+
+function bukaModal() {
+  document.getElementById("qrModal").style.display = "flex";
+}
+function tutupModal() {
+  document.getElementById("qrModal").style.display = "none";
+}
+function cetakQR() {
+  let qrImage = qr.toDataURL();
+  let win = window.open("", "_blank");
+  win.document.write(`
+    <html>
+    <head>
+      <title>Cetak QR Code</title>
+      <style>
+        body { text-align: center; margin-top: 50px; }
+        img { width: 300px; height: 300px; }
+      </style>
+    </head>
+    <body>
+      <h2>QR Code Inventaris</h2>
+      <img src="${qrImage}" alt="QR Code"/>
+      <script>
+        window.onload = function() {
+          window.print();
+        }
+      <\/script>
+    </body>
+    </html>
+  `);
+  win.document.close();
+}
+function downloadQR() {
+  let qrImage = qr.toDataURL("image/png");
+  let a = document.createElement("a");
+  a.href = qrImage;
+  a.download = "qr_inventaris.png";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+</script>
+
+</body>
+</html>
